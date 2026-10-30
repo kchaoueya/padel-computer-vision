@@ -18,7 +18,12 @@ from trackers import (
     KeypointsTracker,
     TrackingRunner
 )
-from analytics import DataAnalytics
+from analytics import (
+    DataAnalytics,
+    add_player_kinematics,
+    summarize_players,
+    speed_zone_table,
+)
 from visualizations.padel_court import padel_court_2d
 from estimate_velocity import BallVelocityEstimator, ImpactType
 from utils.video import save_video
@@ -244,7 +249,8 @@ if upload_video or st.session_state["video"] is not None:
 
             st.session_state["runner"] = runner
 
-            st.session_state["df"]  = runner.data_analytics.into_dataframe(
+            st.session_state["df"]  = add_player_kinematics(
+                runner.data_analytics.into_dataframe(runner.video_info.fps),
                 runner.video_info.fps,
             )
 
@@ -266,6 +272,50 @@ if upload_video or st.session_state["video"] is not None:
         st.markdown(f"- Number of rows: {len(st.session_state["df"])}")
         # st.write("- Columns: ")
         # st.write(st.session_state["df"].columns)
+
+        # ------------------------------------------------------------------
+        # Player statistics (smoothed speed / acceleration)
+        # ------------------------------------------------------------------
+        fps_stats = st.session_state["runner"].video_info.fps
+
+        st.header("Player statistics")
+        st.dataframe(summarize_players(st.session_state["df"], fps_stats))
+
+        zones = speed_zone_table(st.session_state["df"], fps_stats)
+        if not zones.empty:
+            st.subheader("Time in each speed zone")
+            zone_fig = go.Figure()
+            for zone_name, zdf in zones.groupby("zone", sort=False):
+                zone_fig.add_trace(go.Bar(
+                    x=[f"Player {i}" for i in zdf["player_id"]],
+                    y=zdf["time_pct"],
+                    name=zone_name,
+                ))
+            zone_fig.update_layout(barmode="stack", yaxis_title="% of tracked time")
+            st.plotly_chart(zone_fig)
+
+        stat_choice = st.radio(
+            "Metric",
+            ["Speed (km/h)", "Acceleration (m/s²)"],
+            horizontal=True,
+        )
+        stat_col = "speed_kmh" if stat_choice.startswith("Speed") else "accel_ms2"
+        stat_fig = go.Figure()
+        for pid in (1, 2, 3, 4):
+            stat_fig.add_trace(go.Scatter(
+                x=st.session_state["df"]["time"],
+                y=st.session_state["df"][f"player{pid}_{stat_col}"],
+                mode="lines",
+                name=f"Player {pid}",
+            ))
+        stat_fig.update_layout(xaxis_title="Time (s)", yaxis_title=stat_choice)
+        st.plotly_chart(stat_fig)
+
+        st.download_button(
+            "Download full stats (CSV)",
+            st.session_state["df"].to_csv().encode("utf-8"),
+            file_name="padel_stats.csv",
+        )
 
         velocity_type_choice = st.radio(
             "Type", 

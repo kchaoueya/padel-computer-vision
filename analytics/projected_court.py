@@ -555,8 +555,15 @@ class ProjectedCourt:
         )
 
         if data_analytics is not None:
+            # Float projection (not the int pixel one used for drawing): rounding
+            # to whole pixels quantizes positions in ~4 cm steps, which becomes
+            # large speed/acceleration noise after differentiation.
+            float_projection = self.project_point(
+                point=player_detection.feet,
+                homography_matrix=homography_matrix,
+            )
             shifted_projected_player_pos = self.court_keypoints.shift_point_origin(
-                point=tuple(float(v) for v in projected_player.projection),
+                point=tuple(float(v) for v in float_projection),
                 dimension="meters",
             )
             data_analytics.add_player_position(

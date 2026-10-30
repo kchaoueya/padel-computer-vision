@@ -14,6 +14,8 @@ from trackers import (
     TrackingRunner,
 )
 from config import *
+from analytics import add_player_kinematics, summarize_players, speed_zone_table
+from analytics.overlay import draw_stats_overlay
 
 
 SELECTED_KEYPOINTS = []
@@ -38,7 +40,7 @@ PADEL COURT KEYPOINTS
         k1----------------------k2
         
 """
-
+"""
 def click_event(event, x, y, flags, params): 
   
     # checking for left mouse clicks 
@@ -55,8 +57,38 @@ def click_event(event, x, y, flags, params):
                     str(y), (x,y), font, 
                     1, (255, 0, 0), 2) 
         cv2.imshow('frame', img) 
+"""
 
 
+
+DISPLAY_SCALE = 1.0
+display_img = None
+ 
+def click_event(event, x, y, flags, params):
+
+    if event == cv2.EVENT_LBUTTONDOWN:
+
+        # Convert displayed coordinates -> original image coordinates
+        original_x = int(x / DISPLAY_SCALE)
+        original_y = int(y / DISPLAY_SCALE)
+
+        SELECTED_KEYPOINTS.append((original_x, original_y))
+
+        font = cv2.FONT_HERSHEY_SIMPLEX
+
+        # Display the original coordinates
+        cv2.putText(
+            display_img,
+            str(original_x) + ',' + str(original_y),
+            (x, y),
+            font,
+            0.7,
+            (255, 0, 0),
+            2
+        )
+
+        cv2.imshow('frame', display_img)
+"""i am writing this"""      
 if __name__ == "__main__":
     
     t1 = timeit.default_timer()
@@ -82,13 +114,39 @@ if __name__ == "__main__":
         with open(FIXED_COURT_KEYPOINTS_LOAD_PATH, "r") as f:
             SELECTED_KEYPOINTS = json.load(f)
     else:
-        cv2.imshow('frame', img)
+        """cv2.imshow('frame', img)
         cv2.setMouseCallback('frame', click_event) 
         # wait for a key to be pressed to exit 
         cv2.waitKey(0) 
         # close the window 
         cv2.destroyAllWindows() 
+        """
+        
+    screen_width = 1200
+    screen_height = 800
 
+    original_height, original_width = img.shape[:2]
+
+    scale_x = screen_width / original_width
+    scale_y = screen_height / original_height
+
+    DISPLAY_SCALE = min(scale_x, scale_y, 1.0)
+
+    display_width = int(original_width * DISPLAY_SCALE)
+    display_height = int(original_height * DISPLAY_SCALE)
+
+    display_img = cv2.resize(
+        img,
+        (display_width, display_height)
+    )
+
+    cv2.namedWindow('frame', cv2.WINDOW_NORMAL)
+    cv2.imshow('frame', display_img)
+    cv2.setMouseCallback('frame', click_event)
+
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+    """i m writing this"""
     if FIXED_COURT_KEYPOINTS_SAVE_PATH is not None:
         with open(FIXED_COURT_KEYPOINTS_SAVE_PATH, "w") as f:
             json.dump(SELECTED_KEYPOINTS, f)
@@ -115,7 +173,7 @@ if __name__ == "__main__":
             ),
             axis=0
         ),
-        frame_resolution_wh=video_info.resolution_wh,
+       """ frame_resolution_wh=video_info.resolution_wh,"""
     )
 
 
@@ -178,7 +236,21 @@ if __name__ == "__main__":
 
     if COLLECT_DATA:
         data = runner.data_analytics.into_dataframe(runner.video_info.fps)
+        fps = runner.video_info.fps
+        data = add_player_kinematics(data, fps)
         data.to_csv(COLLECT_DATA_PATH)
+
+        summary = summarize_players(data, fps)
+        print(summary.T)
+        summary.to_csv(PLAYER_SUMMARY_PATH)
+        speed_zone_table(data, fps).to_csv("player_speed_zones.csv", index=False)
+
+        draw_stats_overlay(
+            OUTPUT_VIDEO_PATH,
+            STATS_OVERLAY_VIDEO_PATH,
+            players_results=players_tracker.results,
+            df=data,
+        )
 
     t2 = timeit.default_timer()
 

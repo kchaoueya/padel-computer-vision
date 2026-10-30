@@ -1,4 +1,4 @@
-kaleav
+kaleido
 ffmpeg
 matplotlib
 opencv-python
